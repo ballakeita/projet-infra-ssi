@@ -1,0 +1,66 @@
+name: Deploy VM on Alice Hypervisor
+
+on:
+  workflow_dispatch:
+    inputs:
+      vm_name:
+        description: "Nom de la VM (ex: srv4)"
+        required: true
+        default: "srv4"
+      memory:
+        description: "RAM en Mo (ex: 8192)"
+        required: true
+        default: "8192"
+      tapnum:
+        description: "Numéro de port TAP (ex: 53)"
+        required: true
+        default: "53"
+      tagnum:
+        description: "Numéro de port TAG (ex: 20)"
+        required: true
+        default: "20"
+
+jobs:
+  deploy:
+    runs-on: self-hosted # Le job s'exécutera localement sur 'alice' via votre runner
+
+    steps:
+      - name: Vérification du répertoire de travail
+        run: echo "Exécution dans $PWD"
+
+      - name: Génération de vm.yaml
+        run: |
+          cat <<EOF > vm.yaml
+          kvm:
+            vms:
+              - vm_name: ${{ github.event.inputs.vm_name }}
+                os: linux
+                master_image: debian-testing-amd64.qcow2
+                force_copy: false
+                memory: ${{ github.event.inputs.memory }}
+                tapnum: ${{ github.event.inputs.tapnum }}
+          EOF
+          cat vm.yaml
+
+      - name: Génération de switch.yaml
+        run: |
+          cat <<EOF > switch.yaml
+          ovs:
+            switches:
+            - name: dsw-host
+              ports:
+              - name: tap${{ github.event.inputs.tapnum }}
+                type: OVSPort
+                vlan_mode: access
+                tag: ${{github.event.inputs.tagnum}}
+          EOF
+          cat switch.yaml
+
+      - name: Appliquer la configuration du switch
+        run: |
+          # On utilise le chemin absolu vers le script du prof
+          $HOME/masters/scripts/switch-conf.py --apply switch.yaml
+
+      - name: Démarrer la VM
+        run: |
+          $HOME/masters/scripts/lab-startup.py vm.yaml
